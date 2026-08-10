@@ -61,7 +61,7 @@ class SubmissionController @Inject() (
         submissionService
           .getSubmissions(eoriNumber)
           .fold(
-            error => error.toErrorResponse.toResult.withHeaders(),
+            error => error.toErrorResponse.toResult,
             submissionSummaryList => Status(ResponseCode.Ok.status)(submissionSummaryList.toXml)
           )
       )

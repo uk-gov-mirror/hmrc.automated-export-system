@@ -400,10 +400,9 @@ class XmlReaderSpec extends AnyFreeSpecLike, Matchers, EitherValues, TableDriven
 
     ".as" - {
 
-      "should read a a simple NodeSeq" - {
+      "should read a simple NodeSeq" - {
 
         "when there is an implicit XmlReader instance available" - {
-          import TestData.SimpleModel.simpleModelXmlReader
 
           "successfully" - {
 
