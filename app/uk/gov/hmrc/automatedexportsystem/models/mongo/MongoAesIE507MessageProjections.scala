@@ -17,7 +17,7 @@
 package uk.gov.hmrc.automatedexportsystem.models.mongo
 
 import com.mongodb.client.model.Projections
-import org.mongodb.scala.bson.BsonDocument
+import org.mongodb.scala.Document
 import org.mongodb.scala.bson.conversions.Bson
 
 object MongoAesIE507MessageProjections:
@@ -29,37 +29,24 @@ object MongoAesIE507MessageProjections:
     Projections.include("updatedAt"),
     Projections.computed(
       "status",
-      BsonDocument(
-        """
+      Document("""
           |{
-          |  "$let": {
-          |    "vars": {
-          |      "sorted": {
+          |  "$getField": {
+          |    "field": "status",
+          |    "input": {
+          |      "$first": {
           |        "$sortArray": {
-          |          "input": {
-          |            "$map": {
-          |              "input": { "$ifNull": ["$metadata", []] },
-          |              "as": "m",
-          |              "in": {
-          |                "event": "$$m",
-          |                "sortDate": { "$ifNull": ["$$m.dateUpdated", "$$m.dateCreated"] }
-          |              }
-          |            }
-          |          },
-          |          "sortBy": { "sortDate": -1 }
+          |          "input": "$metadata",
+          |          "sortBy": {
+          |            "dateUpdated": -1,
+          |            "dateCreated": -1
+          |          }
           |        }
-          |      }
-          |    },
-          |    "in": {
-          |      "$let": {
-          |        "vars": { "top": { "$arrayElemAt": ["$$sorted", 0] } },
-          |        "in": "$$top.event.status"
           |      }
           |    }
           |  }
           |}
-          |""".stripMargin
-      )
+          |""".stripMargin)
     ),
     Projections.excludeId()
   )

@@ -25,7 +25,7 @@ import java.time.Instant
 final case class NotificationEvent(
   correlationId: String,
   dateCreated:   Instant,
-  dateUpdated:   Option[Instant],
+  dateUpdated:   Instant,
   isPending:     Boolean,
   status:        NotificationEventStatus,
   errors:        Option[NonEmptyList[NotificationError]]

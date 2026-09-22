@@ -136,7 +136,7 @@ class MongoAesIE507MessageSpec extends AnyFreeSpecLike, Matchers, EitherValues, 
           NotificationEvent(
             correlationId = "correlationId",
             dateCreated = Instant.ofEpochMilli(instant),
-            dateUpdated = Some(Instant.ofEpochMilli(instant)),
+            dateUpdated = Instant.ofEpochMilli(instant),
             isPending = false,
             status = NotificationEventStatus.Awaiting,
             errors = Some(
@@ -273,7 +273,7 @@ class MongoAesIE507MessageSpec extends AnyFreeSpecLike, Matchers, EitherValues, 
           NotificationEvent(
             correlationId = "correlationId",
             dateCreated = Instant.ofEpochMilli(instant),
-            dateUpdated = Some(Instant.ofEpochMilli(instant)),
+            dateUpdated = Instant.ofEpochMilli(instant),
             isPending = false,
             status = NotificationEventStatus.Awaiting,
             errors = Some(
@@ -438,7 +438,7 @@ class MongoAesIE507MessageSpec extends AnyFreeSpecLike, Matchers, EitherValues, 
           NotificationEvent(
             correlationId = "correlationId",
             dateCreated = Instant.ofEpochMilli(instant),
-            dateUpdated = Some(Instant.ofEpochMilli(instant)),
+            dateUpdated = Instant.ofEpochMilli(instant),
             isPending = false,
             status = NotificationEventStatus.Awaiting,
             errors = Some(
@@ -572,7 +572,7 @@ class MongoAesIE507MessageSpec extends AnyFreeSpecLike, Matchers, EitherValues, 
           NotificationEvent(
             correlationId = "correlationId",
             dateCreated = Instant.ofEpochMilli(instant),
-            dateUpdated = Some(Instant.ofEpochMilli(instant)),
+            dateUpdated = Instant.ofEpochMilli(instant),
             isPending = false,
             status = NotificationEventStatus.Awaiting,
             errors = None

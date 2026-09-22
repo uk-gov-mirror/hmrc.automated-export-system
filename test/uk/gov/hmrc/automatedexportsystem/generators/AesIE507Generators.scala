@@ -333,7 +333,6 @@ trait MongoAesIE507MessageGenerator extends AesIE507Generators:
       for
         correlationId              <- Gen.alphaNumStr
         (dateCreated, dateUpdated) <- chronologicalInstantsArb(after.getEpochSecond).arbitrary
-        dateUpdated                <- Gen.option(Gen.const(dateUpdated))
         isPending                  <- arbitrary[Boolean]
         status                     <- arbitrary[NotificationEventStatus]
         errors                     <- arbitrary[Option[NonEmptyList[NotificationError]]]

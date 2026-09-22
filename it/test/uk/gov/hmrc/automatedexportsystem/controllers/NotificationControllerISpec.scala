@@ -16,12 +16,12 @@
 
 package uk.gov.hmrc.automatedexportsystem.controllers
 
-import play.api.test.Helpers.*
-import play.api.test.{FakeRequest, Helpers}
-import uk.gov.hmrc.automatedexportsystem.helpers.BaseISpec
 import cats.data.NonEmptyList
 import org.scalacheck.Arbitrary.arbitrary
+import play.api.test.Helpers.*
+import play.api.test.{FakeRequest, Helpers}
 import uk.gov.hmrc.automatedexportsystem.generators.MongoAesIE507MessageGenerator
+import uk.gov.hmrc.automatedexportsystem.helpers.BaseISpec
 import uk.gov.hmrc.automatedexportsystem.models.IE507.{EoriNumber, ExportOperationType, Mrn}
 import uk.gov.hmrc.automatedexportsystem.models.mongo.write.MongoAesIE507Message
 import uk.gov.hmrc.automatedexportsystem.models.notification.NotificationEventStatus
@@ -30,35 +30,43 @@ import uk.gov.hmrc.automatedexportsystem.repositories.AesIE507RepositoryImpl
 import scala.xml.{Elem, XML as Xml}
 
 class NotificationControllerISpec extends BaseISpec with MongoAesIE507MessageGenerator:
+  object TestData:
+    val endpoint = "/automated-export-system/notification"
 
-  private val endpoint = "/automated-export-system/notification"
+    val correlationId =
+      "8f3c2a19-7d2b-4b74-a9f0-123456789012"
 
-  private val correlationId =
-    "8f3c2a19-7d2b-4b74-a9f0-123456789012"
+    val eoriNumber =
+      EoriNumber("GB123456789000")
 
-  private val eoriNumber =
-    EoriNumber("GB123456789000")
+    val mrn =
+      Mrn("25GB1234567890ABCDE")
 
-  private val mrn =
-    Mrn("25GB1234567890ABCDE")
+    val validPayload: Elem =
+      <notification>
+        <correlationId>
+          {correlationId}
+        </correlationId>
+        <eori>
+          {eoriNumber.value}
+        </eori>
+        <mrn>
+          {mrn.value}
+        </mrn>
+        <dateCreated>2026-08-12T10:15:30</dateCreated>
+        <status>1</status>
+      </notification>
 
-  val validPayload: Elem =
-    <notification>
-      <correlationId>{correlationId}</correlationId>
-      <eori>{eoriNumber.value}</eori>
-      <mrn>{mrn.value}</mrn>
-      <dateCreated>2026-08-12T10:15:30</dateCreated>
-      <status>1</status>
-    </notification>
+    val invalidPayload =
+      """<not-notification>
+        |      <status>1</status>
+        |    </notification>""".stripMargin
 
-  val invalidPayload = """<not-notification>
-                         |      <status>1</status>
-                         |    </notification>""".stripMargin
-
-  val invalidXmlPayload =
-    <notification>
-      <status>1</status>
-    </notification>
+    val invalidXmlPayload =
+      <notification>
+        <status>1</status>
+      </notification>
+  end TestData
 
   val aesIE507Repository: AesIE507RepositoryImpl =
     app.injector.instanceOf[AesIE507RepositoryImpl]
@@ -76,8 +84,7 @@ class NotificationControllerISpec extends BaseISpec with MongoAesIE507MessageGen
 
       val notificationEvent =
         generatedMessage.metadata.head.copy(
-          correlationId = correlationId,
-          dateUpdated = None,
+          correlationId = TestData.correlationId,
           isPending = true,
           status = NotificationEventStatus.Awaiting,
           errors = None
@@ -85,10 +92,10 @@ class NotificationControllerISpec extends BaseISpec with MongoAesIE507MessageGen
 
       val message =
         generatedMessage.copy(
-          eoriNumber = eoriNumber,
+          eoriNumber = TestData.eoriNumber,
           exportOperation = generatedMessage.exportOperation.copy(
             exportOperationType = ExportOperationType.Standard,
-            mrn = mrn
+            mrn = TestData.mrn
           ),
           metadata = NonEmptyList.one(notificationEvent)
         )
@@ -99,9 +106,9 @@ class NotificationControllerISpec extends BaseISpec with MongoAesIE507MessageGen
           .head()
       )
 
-      val request = FakeRequest(Helpers.POST, endpoint)
+      val request = FakeRequest(Helpers.POST, TestData.endpoint)
         .withHeaders("Authorization" -> "some-token")
-        .withXmlBody(validPayload)
+        .withXmlBody(TestData.validPayload)
 
       val result = Helpers.route(app, request).value
 
@@ -109,9 +116,9 @@ class NotificationControllerISpec extends BaseISpec with MongoAesIE507MessageGen
     }
 
     "return 401 when authorization header is invalid" in {
-      val request = FakeRequest(Helpers.POST, endpoint)
+      val request = FakeRequest(Helpers.POST, TestData.endpoint)
         .withHeaders("Authorization" -> "invalid-token")
-        .withXmlBody(validPayload)
+        .withXmlBody(TestData.validPayload)
 
       val result = Helpers.route(app, request).value
       Helpers.status(result)      shouldBe Helpers.UNAUTHORIZED
@@ -121,7 +128,7 @@ class NotificationControllerISpec extends BaseISpec with MongoAesIE507MessageGen
     }
 
     "return 415 when authorization header is valid and payload is missing" in {
-      val request = FakeRequest(Helpers.POST, endpoint)
+      val request = FakeRequest(Helpers.POST, TestData.endpoint)
         .withHeaders("Authorization" -> "some-token")
 
       val result = Helpers.route(app, request).value
@@ -132,9 +139,9 @@ class NotificationControllerISpec extends BaseISpec with MongoAesIE507MessageGen
     }
 
     "return 422 when authorization header is valid and payload is invalid" in {
-      val request = FakeRequest(Helpers.POST, endpoint)
+      val request = FakeRequest(Helpers.POST, TestData.endpoint)
         .withHeaders("Authorization" -> "some-token")
-        .withBody(invalidPayload)
+        .withBody(TestData.invalidPayload)
 
       val result = Helpers.route(app, request).value
       Helpers.status(result)      shouldBe Helpers.UNSUPPORTED_MEDIA_TYPE
@@ -144,9 +151,9 @@ class NotificationControllerISpec extends BaseISpec with MongoAesIE507MessageGen
     }
 
     "return 422 when authorization header is valid and payload is invalid xml" in {
-      val request = FakeRequest(Helpers.POST, endpoint)
+      val request = FakeRequest(Helpers.POST, TestData.endpoint)
         .withHeaders("Authorization" -> "some-token")
-        .withBody(invalidXmlPayload)
+        .withBody(TestData.invalidXmlPayload)
 
       val result = Helpers.route(app, request).value
       Helpers.status(result)      shouldBe Helpers.UNPROCESSABLE_ENTITY

@@ -26,7 +26,7 @@ import uk.gov.hmrc.automatedexportsystem.xml.XmlWriter.toXml
 import uk.gov.hmrc.automatedexportsystem.xml.{XmlRootTag, XmlWriter}
 
 import java.time.format.DateTimeFormatter
-import java.time.{Instant, LocalDateTime, ZoneOffset}
+import java.time.{LocalDateTime, ZoneOffset}
 import scala.xml.NodeSeq
 
 final case class Submission(
@@ -58,7 +58,7 @@ object Submission:
   def fromMongoAesIE507Message(message: MongoAesIE507Message): Submission = {
     val mostRecentNotificationEvent: NotificationEvent =
       message.metadata.toList
-        .maxBy(event => event.dateUpdated.getOrElse(event.dateCreated))
+        .maxBy(event => (event.dateUpdated, event.dateCreated))
 
     Submission(
       submissionId = message.submissionId,
