@@ -38,7 +38,7 @@ class AesIE507ActionRefiner @Inject() ()(using protected val executionContext: E
         .as[AesIE507Message]
         .bimap(
           errors => XmlFailedReadError(errors).toErrorResponse.toResult,
-          AesIE507Request(_, request.eori, request.request)
+          AesIE507Request(_, request.eori, request)
         )
         .toEither
     )

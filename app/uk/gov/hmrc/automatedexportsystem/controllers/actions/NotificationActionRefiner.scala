@@ -39,7 +39,7 @@ class NotificationActionRefiner @Inject() ()(using override protected val execut
         .as[AesDigitalNotification]
         .bimap(
           errors => XmlFailedReadError(errors).toErrorResponse.toResult,
-          NotificationRequest(_, request.request)
+          NotificationRequest(_, request)
         )
         .toEither
     )
