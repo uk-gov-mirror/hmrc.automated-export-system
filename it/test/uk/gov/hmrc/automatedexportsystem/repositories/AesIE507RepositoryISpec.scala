@@ -67,9 +67,9 @@ class AesIE507RepositoryISpec
 
     val eoriNumber: EoriNumber = EoriNumber("eoriNumber")
 
-    val mrn: Mrn = Mrn("24GB12345678901234")
+    val mrn: Mrn = Mrn("mrn")
 
-    val correlationId: String = "12345678-1234-1234-1234-12345678901"
+    val correlationId: String = "correlationId"
 
     def mongoAesIE507MessageSummary(message: MongoAesIE507Message) =
       MongoAesIE507MessageSummary(
@@ -162,7 +162,16 @@ class AesIE507RepositoryISpec
             Seq.fill(2)(arbitrary[MongoAesIE507Message].sample).flatten
 
           val mongoAesIE507MessagesMatchingEori: Seq[MongoAesIE507Message] =
-            Seq.fill(1)(arbitrary[MongoAesIE507Message].withEoriAndStatus(TestData.eoriNumber, NotificationEventStatus.Rejected).sample).flatten
+            Seq
+              .fill(1)(
+                arbitrary[MongoAesIE507Message]
+                  .withEoriAndStatus(
+                    TestData.eoriNumber,
+                    NotificationEventStatus.Rejected
+                  )
+                  .sample
+              )
+              .flatten
 
           val mongoAesIE507Messages: Seq[MongoAesIE507Message] =
             mongoAesIE507MessagesDifferentEori ++ mongoAesIE507MessagesMatchingEori
@@ -311,158 +320,291 @@ class AesIE507RepositoryISpec
       }
     }
 
-    ".updateNotification" - {
+    ".cancel" - {
 
-      "should update the matching notification event" in {
+      "should set the document's ExportOperationType to Cancel" - {
 
-        val generatedMessage =
-          arbitrary[MongoAesIE507Message].sample.value
+        "when there is a document in the collection with that eori and submissionId" - {
 
-        val targetCorrelationId = "12345678-1234-1234-1234-12345678901"
-        val otherCorrelationId  = "98765432-4321-4321-4321-10987654321"
+          "and ExportOperationType is not Cancel" in {
+            val mongoAesIE507MessagesDifferentEoriAndId: Seq[MongoAesIE507Message] =
+              Seq.fill(2)(arbitrary[MongoAesIE507Message].sample).flatten
 
-        val targetEvent =
-          generatedMessage.metadata.head.copy(
-            correlationId = targetCorrelationId,
-            isPending = true,
-            status = NotificationEventStatus.Awaiting,
-            errors = None
-          )
+            val mongoAesIE507MessagesMatchingEoriAndId: Seq[MongoAesIE507Message] =
+              Seq
+                .fill(1)(
+                  arbitrary[MongoAesIE507Message]
+                    .withEori(TestData.eoriNumber)
+                    .withSubmissionId(TestData.submissionId)
+                    .withExportOperationType(ExportOperationType.Standard)
+                    .sample
+                )
+                .flatten
 
-        val otherEvent =
-          generatedMessage.metadata.head.copy(
-            correlationId = otherCorrelationId
-          )
+            val mongoAesIE507Messages: Seq[MongoAesIE507Message] =
+              mongoAesIE507MessagesDifferentEoriAndId ++ mongoAesIE507MessagesMatchingEoriAndId
 
-        val message =
-          generatedMessage.copy(
-            eoriNumber = TestData.eoriNumber,
-            exportOperation = generatedMessage.exportOperation.copy(
-              mrn = TestData.mrn
-            ),
-            metadata = NonEmptyList.of(targetEvent, otherEvent)
-          )
+            val mongoAesIE507MessagesMatchingEoriAndIdCancelled: Seq[MongoAesIE507Message] =
+              mongoAesIE507MessagesMatchingEoriAndId.map(m =>
+                m.copy(
+                  exportOperation = m.exportOperation.copy(exportOperationType = ExportOperationType.Cancel),
+                  updatedAt = TestData.instant
+                )
+              )
 
-        repository.collection.insertOne(message).head().futureValue
+            repository.collection.insertMany(mongoAesIE507Messages).head().futureValue
 
-        val updatedAt =
-          Instant.now().truncatedTo(ChronoUnit.MILLIS)
+            val updateStatus: SingleUpdateStatus =
+              repository
+                .cancel(
+                  TestData.eoriNumber,
+                  TestData.submissionId,
+                  TestData.instant
+                )
+                .value
+                .futureValue
+                .value
 
-        val result =
-          repository
-            .updateNotification(
-              TestData.eoriNumber,
-              TestData.mrn,
-              targetCorrelationId,
-              updatedAt,
-              NotificationEventStatus.Accepted,
-              None
-            )
-            .value
-            .futureValue
-            .value
+            updateStatus shouldBe SingleUpdateStatus.Updated("cancel")
 
-        result shouldBe SingleUpdateStatus.Updated("updateNotification")
+            val result: Seq[MongoAesIE507Message] =
+              find(
+                Filters.and(
+                  Filters.eq("eoriNumber", TestData.eoriNumber.value),
+                  Filters.eq("submissionId", TestData.submissionId.value.toString)
+                )
+              ).futureValue
 
-        val updatedTargetEvent: NotificationEvent =
-          targetEvent.copy(
-            dateUpdated = updatedAt,
-            status = NotificationEventStatus.Accepted,
-            isPending = false,
-            errors = None
-          )
+            result shouldBe mongoAesIE507MessagesMatchingEoriAndIdCancelled
+          }
 
-        val updatedMessage =
-          repository
-            .getMessageByNotification(
-              TestData.eoriNumber,
-              TestData.mrn,
-              targetCorrelationId
-            )
-            .value
-            .futureValue
-            .value
+          "and ExportOperationType is Cancel" in {
+            val mongoAesIE507MessagesDifferentEoriAndId: Seq[MongoAesIE507Message] =
+              Seq.fill(2)(arbitrary[MongoAesIE507Message].sample).flatten
 
-        val updatedTarget =
-          updatedMessage.metadata.toList.find(_.correlationId == targetCorrelationId).value
+            val mongoAesIE507MessagesMatchingEoriAndId: Seq[MongoAesIE507Message] =
+              Seq
+                .fill(1)(
+                  arbitrary[MongoAesIE507Message]
+                    .withSubmissionId(TestData.submissionId)
+                    .withEori(TestData.eoriNumber)
+                    .withExportOperationType(ExportOperationType.Cancel)
+                    .sample
+                )
+                .flatten
 
-        val unchangedOther =
-          updatedMessage.metadata.toList.find(_.correlationId == otherCorrelationId).value
+            val mongoAesIE507Messages: Seq[MongoAesIE507Message] =
+              mongoAesIE507MessagesDifferentEoriAndId ++ mongoAesIE507MessagesMatchingEoriAndId
 
-        updatedTarget  shouldBe updatedTargetEvent
-        unchangedOther shouldBe otherEvent
+            repository.collection.insertMany(mongoAesIE507Messages).head().futureValue
+
+            val updateStatus: SingleUpdateStatus =
+              repository
+                .cancel(
+                  TestData.eoriNumber,
+                  TestData.submissionId,
+                  TestData.instant
+                )
+                .value
+                .futureValue
+                .value
+
+            updateStatus shouldBe SingleUpdateStatus.AlreadyUpToDate("cancel")
+
+            val result: Seq[MongoAesIE507Message] =
+              find(Filters.eq("submissionId", TestData.submissionId.value.toString)).futureValue
+
+            result shouldBe mongoAesIE507MessagesMatchingEoriAndId
+          }
+        }
       }
 
-      "should store notification errors on the matching event" in {
+      "should return a MongoError" - {
 
-        val generatedMessage =
-          arbitrary[MongoAesIE507Message].sample.value
+        "when there is no document in the collection with that submissionId" in {
+          val mongoAesIE507MessagesDifferentId: Seq[MongoAesIE507Message] =
+            Seq.fill(3)(arbitrary[MongoAesIE507Message].sample).flatten
 
-        val targetCorrelationId = "12345678-1234-1234-1234-12345678901"
+          repository.collection.insertMany(mongoAesIE507MessagesDifferentId).head().futureValue
 
-        val targetEvent =
-          generatedMessage.metadata.head.copy(
-            correlationId = targetCorrelationId,
-            errors = None
+          val result: MongoError =
+            repository
+              .cancel(
+                TestData.eoriNumber,
+                TestData.submissionId,
+                TestData.instant
+              )
+              .value
+              .futureValue
+              .left
+              .value
+
+          result shouldBe MongoError.DocumentNotFound(
+            s"No document found for submissionId: ${TestData.submissionId.value}"
           )
+        }
+      }
+    }
 
-        val message =
-          generatedMessage.copy(
-            eoriNumber = TestData.eoriNumber,
-            exportOperation = generatedMessage.exportOperation.copy(
-              mrn = TestData.mrn
-            ),
-            metadata = NonEmptyList.one(targetEvent)
-          )
+    ".updateNotification" - {
 
-        repository.collection.insertOne(message).head().futureValue
+      "should update the matching notification event" - {
 
-        val notificationError =
-          NotificationError(
-            code = "ERR001",
-            description = "Test error",
-            path = Some("/test/path"),
-            originalValue = Some("bad-value")
-          )
+        "when there is a document in the collection with that eori and mrn" - {
 
-        val updatedAt =
-          Instant.now().truncatedTo(ChronoUnit.MILLIS)
+          "where the most recent notification event with that correlation id is pending" - {
 
-        repository
-          .updateNotification(
-            TestData.eoriNumber,
-            TestData.mrn,
-            targetCorrelationId,
-            updatedAt,
-            NotificationEventStatus.Rejected,
-            Some(NonEmptyList.one(notificationError))
-          )
-          .value
-          .futureValue
-          .value
+            "when there are no notification errors" in {
+              val generatedMessage: MongoAesIE507Message =
+                arbitrary[MongoAesIE507Message].sample.value
 
-        val updatedMessage =
-          repository
-            .getMessageByNotification(
-              TestData.eoriNumber,
-              TestData.mrn,
-              targetCorrelationId
-            )
-            .value
-            .futureValue
-            .value
+              val targetCorrelationId = "12345678-1234-1234-1234-12345678901"
+              val otherCorrelationId  = "98765432-4321-4321-4321-10987654321"
 
-        val updatedTarget =
-          updatedMessage.metadata.head
+              val targetEvent =
+                generatedMessage.metadata.head.copy(
+                  correlationId = targetCorrelationId,
+                  isPending = true,
+                  status = NotificationEventStatus.Awaiting,
+                  errors = None
+                )
 
-        updatedTarget.status shouldBe NotificationEventStatus.Rejected
-        updatedTarget.errors shouldBe Some(
-          NonEmptyList.one(notificationError)
-        )
+              val otherEvent =
+                generatedMessage.metadata.head.copy(
+                  correlationId = otherCorrelationId
+                )
+
+              val message =
+                generatedMessage.copy(
+                  eoriNumber = TestData.eoriNumber,
+                  exportOperation = generatedMessage.exportOperation.copy(
+                    mrn = TestData.mrn
+                  ),
+                  metadata = NonEmptyList.of(targetEvent, otherEvent)
+                )
+
+              repository.collection.insertOne(message).head().futureValue
+
+              val updatedAt =
+                Instant.now().truncatedTo(ChronoUnit.MILLIS)
+
+              val result =
+                repository
+                  .updateNotification(
+                    TestData.eoriNumber,
+                    TestData.mrn,
+                    targetCorrelationId,
+                    updatedAt,
+                    NotificationEventStatus.Accepted,
+                    None
+                  )
+                  .value
+                  .futureValue
+                  .value
+
+              result shouldBe SingleUpdateStatus.Updated("updateNotification")
+
+              val updatedTargetEvent: NotificationEvent =
+                targetEvent.copy(
+                  dateUpdated = updatedAt,
+                  status = NotificationEventStatus.Accepted,
+                  isPending = false,
+                  errors = None
+                )
+
+              val updatedMessage =
+                repository
+                  .getMessageByNotification(
+                    TestData.eoriNumber,
+                    TestData.mrn,
+                    targetCorrelationId
+                  )
+                  .value
+                  .futureValue
+                  .value
+
+              val updatedTarget =
+                updatedMessage.metadata.toList.find(_.correlationId == targetCorrelationId).value
+
+              val unchangedOther =
+                updatedMessage.metadata.toList.find(_.correlationId == otherCorrelationId).value
+
+              updatedTarget  shouldBe updatedTargetEvent
+              unchangedOther shouldBe otherEvent
+            }
+
+            "when there are notification errors" in {
+              val generatedMessage =
+                arbitrary[MongoAesIE507Message].sample.value
+
+              val targetCorrelationId = "12345678-1234-1234-1234-12345678901"
+
+              val targetEvent =
+                generatedMessage.metadata.head.copy(
+                  correlationId = targetCorrelationId,
+                  errors = None,
+                  isPending = true
+                )
+
+              val message =
+                generatedMessage.copy(
+                  eoriNumber = TestData.eoriNumber,
+                  exportOperation = generatedMessage.exportOperation.copy(
+                    mrn = TestData.mrn
+                  ),
+                  metadata = NonEmptyList.one(targetEvent)
+                )
+
+              repository.collection.insertOne(message).head().futureValue
+
+              val notificationError =
+                NotificationError(
+                  code = "ERR001",
+                  description = "Test error",
+                  path = Some("/test/path"),
+                  originalValue = Some("bad-value")
+                )
+
+              val updatedAt =
+                Instant.now().truncatedTo(ChronoUnit.MILLIS)
+
+              repository
+                .updateNotification(
+                  TestData.eoriNumber,
+                  TestData.mrn,
+                  targetCorrelationId,
+                  updatedAt,
+                  NotificationEventStatus.Rejected,
+                  Some(NonEmptyList.one(notificationError))
+                )
+                .value
+                .futureValue
+                .value
+
+              val updatedMessage =
+                repository
+                  .getMessageByNotification(
+                    TestData.eoriNumber,
+                    TestData.mrn,
+                    targetCorrelationId
+                  )
+                  .value
+                  .futureValue
+                  .value
+
+              val updatedTarget =
+                updatedMessage.metadata.head
+
+              updatedTarget.status shouldBe NotificationEventStatus.Rejected
+              updatedTarget.errors shouldBe Some(
+                NonEmptyList.one(notificationError)
+              )
+            }
+          }
+        }
       }
 
       "should return DocumentNotFound when no matching notification event exists" in {
-
         val result =
           repository
             .updateNotification(
@@ -480,7 +622,7 @@ class AesIE507RepositoryISpec
 
         result shouldBe MongoError.DocumentNotFound(
           s"No document found for EORI: ${TestData.eoriNumber.value}, " +
-            s"MRN: ${TestData.mrn.value} with a notification event with correlationId: missing-correlation-id"
+            s"MRN: ${TestData.mrn.value}, with a notification event with correlationId: missing-correlation-id"
         )
       }
     }
@@ -488,7 +630,6 @@ class AesIE507RepositoryISpec
     ".getMessageByNotification" - {
 
       "should return the document matching eori, mrn and correlationId" in {
-
         val generatedMessage: MongoAesIE507Message =
           arbitrary[MongoAesIE507Message].sample.value
 
@@ -535,107 +676,226 @@ class AesIE507RepositoryISpec
 
         result shouldBe MongoError.DocumentNotFound(
           s"No document found for EORI: ${TestData.eoriNumber.value}, " +
-            s"MRN: ${TestData.mrn.value} with a notification event with correlationId: ${TestData.correlationId}"
+            s"MRN: ${TestData.mrn.value}, with a notification event with correlationId: ${TestData.correlationId}"
         )
       }
     }
 
-    ".cancel" - {
+    ".pushNotificationAfterDiversion" - {
 
-      "should set the document's ExportOperationType to Cancel" - {
+      "should push a notification event to the metadata array" - {
 
-        "when there is a document in the collection with that eori and submissionId" - {
+        "when there is a document in the collection with that eori and mrn" - {
 
-          "and ExportOperationType is not Cancel" in {
-            val mongoAesIE507MessagesDifferentEoriAndId: Seq[MongoAesIE507Message] =
-              Seq.fill(2)(arbitrary[MongoAesIE507Message].sample).flatten
+          "where the most recent notification event with that correlation id is diverted" in {
+            val mongoAesIE507Message: MongoAesIE507Message =
+              arbitrary[MongoAesIE507Message]
+                .withEori(TestData.eoriNumber)
+                .withMrn(TestData.mrn)
+                .sample
+                .value
 
-            val mongoAesIE507MessagesMatchingEoriAndId: Seq[MongoAesIE507Message] =
-              Seq
-                .fill(1)(
-                  arbitrary[MongoAesIE507Message]
-                    .withEori(TestData.eoriNumber)
-                    .withSubmissionId(TestData.submissionId)
-                    .withExportOperationType(ExportOperationType.Standard)
-                    .sample
-                )
-                .flatten
-
-            val mongoAesIE507Messages: Seq[MongoAesIE507Message] =
-              mongoAesIE507MessagesDifferentEoriAndId ++ mongoAesIE507MessagesMatchingEoriAndId
-
-            val mongoAesIE507MessagesMatchingEoriAndIdCancelled: Seq[MongoAesIE507Message] =
-              mongoAesIE507MessagesMatchingEoriAndId.map(m =>
-                m.copy(
-                  exportOperation = m.exportOperation.copy(exportOperationType = ExportOperationType.Cancel),
-                  updatedAt = TestData.instant
-                )
+            val divertedNotificationEvent1: NotificationEvent =
+              NotificationEvent(
+                correlationId = TestData.correlationId,
+                dateCreated = TestData.instant,
+                dateUpdated = TestData.instant.plusMillis(1),
+                isPending = false,
+                status = NotificationEventStatus.Awaiting,
+                errors = None
               )
 
-            repository.collection.insertMany(mongoAesIE507Messages).head().futureValue
+            val mongoAesIE507MessageWithDivertedNotification: MongoAesIE507Message =
+              mongoAesIE507Message.copy(metadata = NonEmptyList.one(divertedNotificationEvent1))
 
-            val singleUpdateStatus: SingleUpdateStatus =
-              repository.cancel(TestData.eoriNumber, TestData.submissionId, TestData.instant).value.futureValue.value
+            repository.collection.insertOne(mongoAesIE507MessageWithDivertedNotification).head().futureValue
 
-            singleUpdateStatus shouldBe SingleUpdateStatus.Updated("cancel")
+            val divertedNotificationEvent2: NotificationEvent =
+              divertedNotificationEvent1.copy(
+                dateCreated = TestData.instant.plusMillis(2),
+                dateUpdated = TestData.instant.plusMillis(2)
+              )
 
-            val result: Seq[MongoAesIE507Message] =
-              find(
-                Filters.and(
-                  Filters.eq("eoriNumber", TestData.eoriNumber.value),
-                  Filters.eq("submissionId", TestData.submissionId.value.toString)
+            val nonDivertedNotificationEvent: NotificationEvent =
+              divertedNotificationEvent1.copy(
+                dateCreated = TestData.instant.plusMillis(3),
+                dateUpdated = TestData.instant.plusMillis(3),
+                status = NotificationEventStatus.Accepted
+              )
+
+            val mongoAesIE507MessageAfterPush: MongoAesIE507Message =
+              mongoAesIE507MessageWithDivertedNotification
+                .copy(metadata =
+                  NonEmptyList.of(
+                    nonDivertedNotificationEvent,
+                    divertedNotificationEvent2,
+                    divertedNotificationEvent1
+                  )
                 )
-              ).futureValue
 
-            result shouldBe mongoAesIE507MessagesMatchingEoriAndIdCancelled
-          }
-
-          "and ExportOperationType is Cancel" in {
-            val mongoAesIE507MessagesDifferentEoriAndId: Seq[MongoAesIE507Message] =
-              Seq.fill(2)(arbitrary[MongoAesIE507Message].sample).flatten
-
-            val mongoAesIE507MessagesMatchingEoriAndId: Seq[MongoAesIE507Message] =
-              Seq
-                .fill(1)(
-                  arbitrary[MongoAesIE507Message]
-                    .withSubmissionId(TestData.submissionId)
-                    .withEori(TestData.eoriNumber)
-                    .withExportOperationType(ExportOperationType.Cancel)
-                    .sample
+            val divertedPushUpdateStatus: SingleUpdateStatus =
+              repository
+                .pushNotificationAfterDiversion(
+                  TestData.eoriNumber,
+                  TestData.mrn,
+                  TestData.correlationId,
+                  divertedNotificationEvent2
                 )
-                .flatten
+                .value
+                .futureValue
+                .value
 
-            val mongoAesIE507Messages: Seq[MongoAesIE507Message] =
-              mongoAesIE507MessagesDifferentEoriAndId ++ mongoAesIE507MessagesMatchingEoriAndId
+            val nonDivertedPushUpdateStatus: SingleUpdateStatus =
+              repository
+                .pushNotificationAfterDiversion(
+                  TestData.eoriNumber,
+                  TestData.mrn,
+                  TestData.correlationId,
+                  nonDivertedNotificationEvent
+                )
+                .value
+                .futureValue
+                .value
 
-            repository.collection.insertMany(mongoAesIE507Messages).head().futureValue
+            divertedPushUpdateStatus    shouldBe SingleUpdateStatus.Updated("pushNotification")
+            nonDivertedPushUpdateStatus shouldBe SingleUpdateStatus.Updated("pushNotification")
 
-            val singleUpdateStatus: SingleUpdateStatus =
-              repository.cancel(TestData.eoriNumber, TestData.submissionId, TestData.instant).value.futureValue.value
+            val result: MongoAesIE507Message =
+              repository
+                .getMessageByNotification(
+                  TestData.eoriNumber,
+                  TestData.mrn,
+                  TestData.correlationId
+                )
+                .value
+                .futureValue
+                .value
 
-            singleUpdateStatus shouldBe SingleUpdateStatus.AlreadyUpToDate("cancel")
-
-            val result: Seq[MongoAesIE507Message] =
-              find(Filters.eq("submissionId", TestData.submissionId.value.toString)).futureValue
-
-            result shouldBe mongoAesIE507MessagesMatchingEoriAndId
+            result shouldBe mongoAesIE507MessageAfterPush
           }
         }
       }
 
       "should return a MongoError" - {
 
-        "when there is no document in the collection with that submissionId" in {
-          val mongoAesIE507MessagesDifferentId: Seq[MongoAesIE507Message] =
+        "when there is a document in the collection with that eori and mrn" - {
+
+          "where the most recent notification event with that correlation id is not diverted" in {
+            val mongoAesIE507Message: MongoAesIE507Message =
+              arbitrary[MongoAesIE507Message]
+                .withEori(TestData.eoriNumber)
+                .withMrn(TestData.mrn)
+                .sample
+                .value
+
+            val divertedNotificationEvent: NotificationEvent =
+              NotificationEvent(
+                correlationId = TestData.correlationId,
+                dateCreated = TestData.instant,
+                dateUpdated = TestData.instant.plusMillis(1),
+                isPending = false,
+                status = NotificationEventStatus.Awaiting,
+                errors = None
+              )
+
+            val nonDivertedNotificationEvent1: NotificationEvent =
+              divertedNotificationEvent.copy(
+                dateCreated = TestData.instant.plusMillis(2),
+                dateUpdated = TestData.instant.plusMillis(2),
+                status = NotificationEventStatus.Amended
+              )
+
+            val mongoAesIE507MessageWithDivertedNotification: MongoAesIE507Message =
+              mongoAesIE507Message.copy(metadata =
+                NonEmptyList.of(
+                  nonDivertedNotificationEvent1,
+                  divertedNotificationEvent
+                )
+              )
+
+            repository.collection.insertOne(mongoAesIE507MessageWithDivertedNotification).head().futureValue
+
+            val nonDivertedNotificationEvent2: NotificationEvent =
+              divertedNotificationEvent.copy(
+                dateCreated = TestData.instant.plusMillis(3),
+                dateUpdated = TestData.instant.plusMillis(3),
+                status = NotificationEventStatus.Accepted
+              )
+
+            val mongoAesIE507MessageAfterPush: MongoAesIE507Message =
+              mongoAesIE507MessageWithDivertedNotification
+                .copy(metadata =
+                  NonEmptyList.of(
+                    nonDivertedNotificationEvent1,
+                    divertedNotificationEvent
+                  )
+                )
+
+            val nonDivertedPushError: MongoError =
+              repository
+                .pushNotificationAfterDiversion(
+                  TestData.eoriNumber,
+                  TestData.mrn,
+                  TestData.correlationId,
+                  nonDivertedNotificationEvent2
+                )
+                .value
+                .futureValue
+                .left
+                .value
+
+            nonDivertedPushError shouldBe MongoError.DocumentNotFound(
+              s"No document found for EORI: ${TestData.eoriNumber.value}, MRN: ${TestData.mrn.value}, where" +
+                s" the most recent notification event with correlationId: ${TestData.correlationId} is diverted"
+            )
+
+            val result: MongoAesIE507Message =
+              repository
+                .getMessageByNotification(
+                  TestData.eoriNumber,
+                  TestData.mrn,
+                  TestData.correlationId
+                )
+                .value
+                .futureValue
+                .value
+
+            result shouldBe mongoAesIE507MessageAfterPush
+          }
+        }
+
+        "when there is no document in the collection with that eori and mrn" in {
+          val mongoAesIE507MessagesDifferentEoriAndMrn: Seq[MongoAesIE507Message] =
             Seq.fill(3)(arbitrary[MongoAesIE507Message].sample).flatten
 
-          repository.collection.insertMany(mongoAesIE507MessagesDifferentId).head().futureValue
+          repository.collection.insertMany(mongoAesIE507MessagesDifferentEoriAndMrn).head().futureValue
+
+          val notificationEvent: NotificationEvent =
+            NotificationEvent(
+              correlationId = TestData.correlationId,
+              dateCreated = TestData.instant,
+              dateUpdated = TestData.instant.plusMillis(1),
+              isPending = false,
+              status = NotificationEventStatus.Awaiting,
+              errors = None
+            )
 
           val result: MongoError =
-            repository.cancel(TestData.eoriNumber, TestData.submissionId, TestData.instant).value.futureValue.left.value
+            repository
+              .pushNotificationAfterDiversion(
+                TestData.eoriNumber,
+                TestData.mrn,
+                TestData.correlationId,
+                notificationEvent
+              )
+              .value
+              .futureValue
+              .left
+              .value
 
           result shouldBe MongoError.DocumentNotFound(
-            s"No document found for submissionId: ${TestData.submissionId.value}"
+            s"No document found for EORI: ${TestData.eoriNumber.value}, MRN: ${TestData.mrn.value}, where" +
+              s" the most recent notification event with correlationId: ${TestData.correlationId} is diverted"
           )
         }
       }
